@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Masar
 
-## Getting Started
+Masar is a clean-room, Arabic-first project and task management web app inspired by the product shape of Worklenz, but implemented from scratch for a Vercel + Supabase-only architecture.
 
-First, run the development server:
+## Stack
+
+- Next.js App Router
+- React + TypeScript strict mode
+- TailwindCSS + ShadCN UI
+- Supabase Postgres, Auth, Storage, and Realtime
+- Zod validation
+- date-fns localization
+
+## Implemented product areas
+
+- Email/password authentication
+- Workspace onboarding
+- Workspace roles and member/invitation schema
+- Project creation, archive flow, and project dashboard
+- Task creation, assignment, comments, checklist, attachments, activity history
+- Dashboard metrics
+- Kanban board and personal task list
+- Realtime notifications, task refresh, and comment refresh
+- Reports page
+- Arabic default locale with RTL layout and English secondary locale
+- Mobile drawer navigation and responsive card-first layouts
+
+## Local setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Copy environment variables:
+
+```bash
+copy .env.example .env.local
+```
+
+3. Fill `.env.local` with your Supabase values.
+
+4. Apply the SQL migration from `supabase/migrations/`.
+
+5. Start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+6. Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The root path redirects to Arabic by default.
 
-## Learn More
+## Verification commands
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run lint
+npx tsc --noEmit
+npm run build
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Clean-room note
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Worklenz was used only as feature inspiration. No large source-code blocks were copied into this project.
