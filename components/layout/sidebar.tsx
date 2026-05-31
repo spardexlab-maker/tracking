@@ -11,6 +11,7 @@ import {
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { Locale } from "@/lib/i18n/config";
 import { cn } from "@/lib/utils";
+import { WorkspaceLogo } from "@/components/workspace/workspace-logo";
 
 const items = [
   { href: "dashboard", icon: LayoutDashboard, key: "dashboard" },
@@ -27,6 +28,7 @@ export function Sidebar({
   dict,
   currentPath,
   workspaceName,
+  workspaceId,
   role,
   counts,
   activeTasks,
@@ -35,6 +37,7 @@ export function Sidebar({
   dict: Dictionary;
   currentPath?: string;
   workspaceName: string;
+  workspaceId: string;
   role: "owner" | "admin" | "manager" | "member" | "viewer";
   counts?: {
     myTasks: number;
@@ -55,9 +58,7 @@ export function Sidebar({
       <div className="flex h-full flex-col p-4">
         <div className="mb-8 border-b border-sidebar-border pb-5">
           <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-sidebar-primary text-lg font-bold text-sidebar-primary-foreground">
-              م
-            </div>
+            <WorkspaceLogo workspaceId={workspaceId} fallbackText={locale === "ar" ? "م" : "M"} />
             <div className="min-w-0">
               <p className="text-lg font-semibold">{dict.app.name}</p>
               <p className="truncate text-xs text-sidebar-foreground/70">{workspaceName}</p>

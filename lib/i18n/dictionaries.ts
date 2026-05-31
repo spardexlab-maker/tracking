@@ -2,7 +2,7 @@ import type { Locale } from "@/lib/i18n/config";
 
 const ar = {
   app: {
-    name: "مسار",
+    name: "المسار",
     tagline: "إدارة المشاريع والمهام بوضوح من البداية إلى الإنجاز",
   },
   common: {

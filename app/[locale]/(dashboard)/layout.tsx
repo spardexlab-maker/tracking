@@ -34,13 +34,7 @@ export default async function DashboardLayout({
   }
 
   const dict = getDictionary(locale);
-  const navigationCounts = await getTaskNavigationCounts(
-    context.workspace.id,
-    user.id,
-    context.role,
-  );
   const supabase = await createClient();
-
   const isLeader = ["owner", "admin", "manager"].includes(context.role);
   let sidebarQuery = supabase
     .from("tasks")
@@ -57,19 +51,26 @@ export default async function DashboardLayout({
     sidebarQuery = sidebarQuery.eq("assignee_id", user.id);
   }
 
-  const { data: activeTasksRaw } = await sidebarQuery;
+  const [navigationCounts, { data: activeTasksRaw }, { data: notifications }] = await Promise.all([
+    getTaskNavigationCounts(
+      context.workspace.id,
+      user.id,
+      context.role,
+    ),
+    sidebarQuery,
+    supabase
+      .from("notifications")
+      .select("id, type, title, body, is_read, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(8),
+  ]);
+
   const activeTasks = ((activeTasksRaw ?? []) as unknown as { id: string; title: string; task_number: number }[]).map((t) => ({
     id: t.id,
     title: t.title,
     task_number: t.task_number,
   }));
-
-  const { data: notifications } = await supabase
-    .from("notifications")
-    .select("id, type, title, body, is_read, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(8);
 
   return (
     <div className="min-h-screen bg-background lg:flex">
@@ -78,6 +79,7 @@ export default async function DashboardLayout({
         dict={dict}
         currentPath={currentPath}
         workspaceName={context.workspace.name}
+        workspaceId={context.workspace.id}
         role={context.role}
         counts={navigationCounts}
         activeTasks={activeTasks}

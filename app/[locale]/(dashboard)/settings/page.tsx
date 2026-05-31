@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/dashboard/page-header";
+import { UploadWorkspaceLogoForm } from "@/components/workspace/upload-workspace-logo-form";
 
 export default async function SettingsPage({
   params,
@@ -52,7 +53,16 @@ export default async function SettingsPage({
         <CardHeader className="border-b py-4">
           <CardTitle>{dict.settings.workspaceSettings}</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 py-4">
+        <CardContent className="grid gap-4 py-4">
+          <UploadWorkspaceLogoForm
+            locale={locale}
+            workspaceId={context!.workspace.id}
+            labelName={locale === "ar" ? "شعار البرنامج" : "Program Logo"}
+            buttonText={locale === "ar" ? "تغيير الشعار" : "Change Logo"}
+            errorText={locale === "ar" ? "تعذر رفع الشعار. حاول مرة أخرى." : "Unable to upload logo."}
+            successText={locale === "ar" ? "تم تحديث شعار البرنامج بنجاح." : "Program logo updated successfully."}
+          />
+          <div className="border-t my-1" />
           <form action={updateWorkspaceAction} className="grid gap-3">
             <input type="hidden" name="locale" value={locale} />
             <input type="hidden" name="workspaceId" value={context!.workspace.id} />
