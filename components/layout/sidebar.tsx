@@ -58,7 +58,11 @@ export function Sidebar({
       <div className="flex h-full flex-col p-4">
         <div className="mb-8 border-b border-sidebar-border pb-5">
           <div className="flex items-center gap-3">
-            <WorkspaceLogo workspaceId={workspaceId} fallbackText={locale === "ar" ? "م" : "M"} />
+            <WorkspaceLogo
+              workspaceId={workspaceId}
+              fallbackText={locale === "ar" ? "م" : "M"}
+              supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL}
+            />
             <div className="min-w-0">
               <p className="text-lg font-semibold">{dict.app.name}</p>
               <p className="truncate text-xs text-sidebar-foreground/70">{workspaceName}</p>

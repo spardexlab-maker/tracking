@@ -13,6 +13,7 @@ export function UploadWorkspaceLogoForm({
   buttonText,
   errorText,
   successText,
+  supabaseUrl,
 }: {
   locale: string;
   workspaceId: string;
@@ -20,6 +21,7 @@ export function UploadWorkspaceLogoForm({
   buttonText: string;
   errorText: string;
   successText: string;
+  supabaseUrl?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [key, setKey] = useState(0); // to force refresh logo image in Settings view
@@ -62,7 +64,7 @@ export function UploadWorkspaceLogoForm({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
       <div key={key}>
-        <WorkspaceLogo workspaceId={workspaceId} fallbackText="م" />
+        <WorkspaceLogo workspaceId={workspaceId} fallbackText="م" supabaseUrl={supabaseUrl} />
       </div>
       <label className="flex-1 grid gap-2 rounded-2xl border bg-background p-3 cursor-pointer hover:bg-muted/50 transition-colors">
         <span className="text-sm font-medium">{labelName}</span>

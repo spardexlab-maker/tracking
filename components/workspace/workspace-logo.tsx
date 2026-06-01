@@ -5,17 +5,19 @@ import { useState } from "react";
 export function WorkspaceLogo({
   workspaceId,
   fallbackText,
+  supabaseUrl,
 }: {
   workspaceId: string;
   fallbackText: string;
+  supabaseUrl?: string;
 }) {
   const [error, setError] = useState(false);
   const [timestamp, setTimestamp] = useState(() => Date.now());
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const logoUrl = `${supabaseUrl}/storage/v1/object/public/workspace-logos/${workspaceId}/logo.png?t=${timestamp}`;
+  const finalSupabaseUrl = supabaseUrl || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const logoUrl = `${finalSupabaseUrl}/storage/v1/object/public/workspace-logos/${workspaceId}/logo.png?t=${timestamp}`;
 
-  if (error || !workspaceId || !supabaseUrl) {
+  if (error || !workspaceId || !finalSupabaseUrl) {
     return (
       <div className="flex size-11 items-center justify-center rounded-2xl bg-sidebar-primary text-lg font-bold text-sidebar-primary-foreground">
         {fallbackText}

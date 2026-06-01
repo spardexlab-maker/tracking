@@ -61,6 +61,7 @@ export default async function SettingsPage({
             buttonText={locale === "ar" ? "تغيير الشعار" : "Change Logo"}
             errorText={locale === "ar" ? "تعذر رفع الشعار. حاول مرة أخرى." : "Unable to upload logo."}
             successText={locale === "ar" ? "تم تحديث شعار البرنامج بنجاح." : "Program logo updated successfully."}
+            supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL}
           />
           <div className="border-t my-1" />
           <form action={updateWorkspaceAction} className="grid gap-3">
