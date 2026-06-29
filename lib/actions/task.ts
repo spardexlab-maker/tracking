@@ -56,6 +56,17 @@ export async function createTaskAction(formData: FormData) {
     redirect(`/${locale}/tasks?error=task`);
   }
 
+  if (parsed.data.assigneeId) {
+    const adminClient = createAdminClient();
+    await adminClient.from("project_members").upsert(
+      {
+        project_id: parsed.data.projectId,
+        user_id: parsed.data.assigneeId,
+      },
+      { onConflict: "project_id,user_id" },
+    );
+  }
+
   const supabase = await createClient();
   const { data: task, error } = await supabase
     .from("tasks")
@@ -81,23 +92,13 @@ export async function createTaskAction(formData: FormData) {
     redirect(`/${locale}/tasks?error=task`);
   }
 
-  if (parsed.data.assigneeId) {
-    const adminClient = createAdminClient();
-    await adminClient.from("project_members").upsert(
-      {
-        project_id: parsed.data.projectId,
-        user_id: parsed.data.assigneeId,
-      },
-      { onConflict: "project_id,user_id" },
-    );
-  }
-
   const attachment = formData.get("attachment");
   if (task && attachment instanceof File && attachment.size > 0) {
     const objectPath = `${workspaceId}/${task.id}/${crypto.randomUUID()}-${attachment.name}`;
+    const fileBuffer = Buffer.from(await attachment.arrayBuffer());
     const { error: uploadError } = await supabase.storage
       .from("task-attachments")
-      .upload(objectPath, attachment, {
+      .upload(objectPath, fileBuffer, {
         contentType: attachment.type || undefined,
         upsert: false,
       });
@@ -112,6 +113,8 @@ export async function createTaskAction(formData: FormData) {
         mime_type: attachment.type || null,
         file_size: attachment.size,
       });
+    } else {
+      console.error("SERVER_SIDE_ATTACHMENT_UPLOAD_FAILURE:", uploadError);
     }
   }
 

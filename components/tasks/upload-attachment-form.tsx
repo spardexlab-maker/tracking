@@ -26,14 +26,18 @@ export function UploadAttachmentForm({
     if (!file) return;
 
     setBusy(true);
-    const supabase = createClient();
-    const path = `${workspaceId}/${taskId}/${crypto.randomUUID()}-${file.name}`;
-    const { error } = await supabase.storage
-      .from("task-attachments")
-      .upload(path, file, { upsert: false });
+    try {
+      const supabase = createClient();
+      const path = `${workspaceId}/${taskId}/${crypto.randomUUID()}-${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from("task-attachments")
+        .upload(path, file, { upsert: false });
 
-    if (!error) {
-      await fetch(`/${locale}/api/attachments`, {
+      if (uploadError) {
+        throw new Error(uploadError.message || JSON.stringify(uploadError));
+      }
+
+      const response = await fetch(`/${locale}/api/attachments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -45,19 +49,26 @@ export function UploadAttachmentForm({
           fileSize: file.size,
         }),
       });
+
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error || "Failed to save attachment metadata in database");
+      }
+
       toast.success(
         locale === "ar" ? "تم رفع المرفق بنجاح." : "Attachment uploaded.",
       );
       router.refresh();
-    } else {
+    } catch (err: any) {
+      console.error("UPLOAD_ATTACHMENT_ERROR:", err);
       toast.error(
         locale === "ar"
-          ? "تعذر رفع المرفق. حاول مرة أخرى."
-          : "Unable to upload attachment.",
+          ? `تعذر رفع المرفق: ${err.message || err}`
+          : `Unable to upload attachment: ${err.message || err}`,
       );
+    } finally {
+      setBusy(false);
     }
-
-    setBusy(false);
   }
 
   return (
