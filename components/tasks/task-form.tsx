@@ -20,6 +20,8 @@ export function TaskForm({
   projectId,
   statuses,
   members,
+  currentUserId,
+  isLeader = true,
 }: {
   locale: Locale;
   dict: Dictionary;
@@ -32,6 +34,8 @@ export function TaskForm({
       | { id: string; full_name: string | null; email: string }
       | Array<{ id: string; full_name: string | null; email: string }>;
   }>;
+  currentUserId?: string;
+  isLeader?: boolean;
 }) {
   const firstStatus = statuses[0];
 
@@ -88,27 +92,57 @@ export function TaskForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2">
-          <Label>{dict.common.assignee}</Label>
-          <Select name="assigneeId">
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder={dict.common.unassigned} />
-            </SelectTrigger>
-            <SelectContent>
+          <Label htmlFor="assigneeId">{dict.common.assignee}</Label>
+          {!isLeader && currentUserId ? (
+            <>
+              <input type="hidden" name="assigneeId" value={currentUserId} />
+              <select
+                id="assigneeId"
+                disabled
+                defaultValue={currentUserId}
+                className="h-11 rounded-xl border bg-muted px-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none cursor-not-allowed opacity-80"
+              >
+                {members.map((member) => {
+                  const user = Array.isArray(member.user) ? member.user[0] : member.user;
+                  if (user.id === currentUserId) {
+                    return (
+                      <option key={member.id} value={user.id}>
+                        {user.full_name ?? user.email}
+                      </option>
+                    );
+                  }
+                  return null;
+                })}
+              </select>
+            </>
+          ) : (
+            <select
+              id="assigneeId"
+              name="assigneeId"
+              defaultValue=""
+              className="h-11 rounded-xl border bg-background px-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+            >
+              <option value="">{dict.common.unassigned}</option>
               {members.map((member) => {
                 const user = Array.isArray(member.user)
                   ? member.user[0]
                   : member.user;
                 return (
-                  <SelectItem key={member.id} value={user.id}>
+                  <option key={member.id} value={user.id}>
                     {user.full_name ?? user.email}
-                  </SelectItem>
+                  </option>
                 );
               })}
-            </SelectContent>
-          </Select>
+            </select>
+          )}
           <p className="text-xs text-muted-foreground">
-            {dict.tasks.assignmentHint}
+            {isLeader ? dict.tasks.assignmentHint : (locale === "ar" ? "سيتم تعيين هذه المهمة إليك تلقائيًا." : "This task will be automatically assigned to you.")}
           </p>
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="dueDate">{dict.common.dueDate} ({dict.common.optional})</Label>
+          <Input id="dueDate" name="dueDate" type="date" className="h-11" />
         </div>
       </div>
 

@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import {
   addChecklistItemAction,
+  approveTaskDeliveryAction,
+  transferTaskToPmAction,
   approveTaskCompletionAction,
   assignLabelAction,
   archiveTaskAction,
@@ -105,6 +107,11 @@ export default async function TaskDetailPage({
                 <StatusBadge variant={status?.is_done ? "success" : "info"}>
                   {locale === "ar" ? status?.name_ar : status?.name}
                 </StatusBadge>
+                {task.created_by === task.assignee_id && (
+                  <StatusBadge variant="warning">
+                    {dict.tasks.selfAssigned}
+                  </StatusBadge>
+                )}
               </p>
               <p className="enterprise-muted-panel p-3 text-sm">
                 <span className="text-muted-foreground">{dict.common.assignee}: </span>
@@ -123,9 +130,19 @@ export default async function TaskDetailPage({
                 {formatDate(task.due_date, locale)}
               </p>
             </div>
-            {task.completion_requested_at && !task.completion_approved_at && (
+            {task.completion_requested_at && !task.delivery_approved_at && (
               <div className="rounded-2xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                 {dict.tasks.completionPending}
+              </div>
+            )}
+            {task.completion_requested_at && task.delivery_approved_at && !task.transferred_to_pm_at && !task.completion_approved_at && (
+              <div className="rounded-2xl border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-900">
+                {dict.tasks.delivered}
+              </div>
+            )}
+            {task.completion_requested_at && task.transferred_to_pm_at && !task.completion_approved_at && (
+              <div className="rounded-2xl border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                {dict.tasks.awaitingPmSignOff}
               </div>
             )}
           </CardContent>
@@ -151,10 +168,48 @@ export default async function TaskDetailPage({
           </Card>
         )}
 
-        {canManageTask && task.completion_requested_at && !task.completion_approved_at && (
+        {canManageTask && task.completion_requested_at && !task.delivery_approved_at && (
           <Card id="progress" className="py-0">
             <CardHeader className="border-b py-4">
               <CardTitle>{dict.tasks.completionPending}</CardTitle>
+            </CardHeader>
+            <CardContent className="py-4">
+              <form action={approveTaskDeliveryAction}>
+                <input type="hidden" name="locale" value={locale} />
+                <input type="hidden" name="taskId" value={task.id} />
+                <input type="hidden" name="projectId" value={task.project_id} />
+                <Button>{dict.tasks.approveDelivery}</Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {canManageTask && task.completion_requested_at && task.delivery_approved_at && !task.transferred_to_pm_at && !task.completion_approved_at && (
+          <Card id="progress" className="py-0">
+            <CardHeader className="border-b py-4">
+              <CardTitle>{dict.tasks.delivered}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-3 py-4">
+              <form action={transferTaskToPmAction}>
+                <input type="hidden" name="locale" value={locale} />
+                <input type="hidden" name="taskId" value={task.id} />
+                <input type="hidden" name="projectId" value={task.project_id} />
+                <Button variant="outline">{dict.tasks.transferToPm}</Button>
+              </form>
+              <form action={approveTaskCompletionAction}>
+                <input type="hidden" name="locale" value={locale} />
+                <input type="hidden" name="taskId" value={task.id} />
+                <input type="hidden" name="projectId" value={task.project_id} />
+                <Button>{dict.tasks.markCompleted}</Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {canManageTask && task.completion_requested_at && task.transferred_to_pm_at && !task.completion_approved_at && (
+          <Card id="progress" className="py-0">
+            <CardHeader className="border-b py-4">
+              <CardTitle>{dict.tasks.awaitingPmSignOff}</CardTitle>
             </CardHeader>
             <CardContent className="py-4">
               <form action={approveTaskCompletionAction}>
@@ -179,7 +234,7 @@ export default async function TaskDetailPage({
                 <input type="hidden" name="projectId" value={task.project_id} />
                 <select
                   name="statusId"
-                  defaultValue={status?.id}
+                  defaultValue={task.completion_requested_status_id ?? status?.id}
                   className="h-11 rounded-xl border bg-background px-3 text-sm"
                 >
                   {statuses.map((item) => (
@@ -202,6 +257,36 @@ export default async function TaskDetailPage({
           </Card>
         )}
 
+        {/* Notes & Comments Section */}
+        <Card className="py-0">
+          <CardHeader className="border-b py-4">
+            <CardTitle>{dict.tasks.commentsTitle}</CardTitle>
+          </CardHeader>
+          <CardContent className="py-4 space-y-4">
+            {detail.comments.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-2 text-center">
+                {dict.tasks.noComments}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {detail.comments.map((comment) => {
+                  const authorObj = Array.isArray(comment.author) ? comment.author[0] : comment.author;
+                  const authorName = authorObj?.full_name ?? authorObj?.email ?? (locale === "ar" ? "مستخدم غير معروف" : "Unknown User");
+                  return (
+                    <div key={comment.id} className="rounded-2xl border bg-muted/20 p-3 text-start">
+                      <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 mb-2">
+                        <span className="text-sm font-semibold text-foreground">{authorName}</span>
+                        <span className="text-xs text-muted-foreground">{formatDate(comment.created_at, locale)}</span>
+                      </div>
+                      <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{comment.body}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {canManageTask && (
           <Card className="py-0">
             <CardHeader className="border-b py-4">
@@ -216,7 +301,7 @@ export default async function TaskDetailPage({
                 <Textarea name="description" defaultValue={task.description ?? ""} />
                 <select
                   name="statusId"
-                  defaultValue={status?.id}
+                  defaultValue={task.completion_requested_status_id ?? status?.id}
                   className="h-11 rounded-xl border bg-background px-3 text-sm"
                 >
                   {statuses.map((item) => (
@@ -225,38 +310,33 @@ export default async function TaskDetailPage({
                     </option>
                   ))}
                 </select>
-                <Select key={`priority-${task.priority}`} name="priority" defaultValue={task.priority}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">{dict.common.low}</SelectItem>
-                    <SelectItem value="medium">{dict.common.medium}</SelectItem>
-                    <SelectItem value="high">{dict.common.high}</SelectItem>
-                    <SelectItem value="urgent">{dict.common.urgent}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  key={`assignee-${task.assignee_id ?? "unassigned"}`}
-                  name="assigneeId"
-                  defaultValue={task.assignee_id ?? undefined}
+                <select
+                  name="priority"
+                  defaultValue={task.priority}
+                  className="h-11 rounded-xl border bg-background px-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={dict.common.unassigned} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {members.map((member) => {
-                      const profile = Array.isArray(member.user)
-                        ? member.user[0]
-                        : member.user;
-                      return (
-                        <SelectItem key={member.id} value={profile.id}>
-                          {profile.full_name ?? profile.email}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
+                  <option value="low">{dict.common.low}</option>
+                  <option value="medium">{dict.common.medium}</option>
+                  <option value="high">{dict.common.high}</option>
+                  <option value="urgent">{dict.common.urgent}</option>
+                </select>
+                <select
+                  name="assigneeId"
+                  defaultValue={task.assignee_id ?? ""}
+                  className="h-11 rounded-xl border bg-background px-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                >
+                  <option value="">{dict.common.unassigned}</option>
+                  {members.map((member) => {
+                    const profile = Array.isArray(member.user)
+                      ? member.user[0]
+                      : member.user;
+                    return (
+                      <option key={member.id} value={profile.id}>
+                        {profile.full_name ?? profile.email}
+                      </option>
+                    );
+                  })}
+                </select>
                 <Input name="startDate" type="date" defaultValue={task.start_date ?? ""} />
                 <Input name="dueDate" type="date" defaultValue={task.due_date ?? ""} />
                 <Button>{dict.common.update}</Button>

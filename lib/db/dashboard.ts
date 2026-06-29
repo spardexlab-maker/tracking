@@ -29,6 +29,10 @@ interface RawDbTask {
   priority: string;
   due_date: string | null;
   received_at: string | null;
+  completion_requested_at: string | null;
+  delivery_approved_at: string | null;
+  transferred_to_pm_at: string | null;
+  completion_approved_at: string | null;
   status: RawDbStatus | RawDbStatus[] | null;
   assignee: RawDbAssignee | RawDbAssignee[] | null;
 }
@@ -53,6 +57,10 @@ export type TaskDashboardMetrics = {
     priority: string;
     due_date: string | null;
     received_at: string | null;
+    completion_requested_at: string | null;
+    delivery_approved_at: string | null;
+    transferred_to_pm_at: string | null;
+    completion_approved_at: string | null;
     status: {
       id: string;
       name: string;
@@ -76,59 +84,25 @@ export async function getEmployeeDashboardMetrics(
   const supabase = await createClient();
 
   const [
-    totalTasks,
-    unreceivedTasks,
-    remainingTasks,
-    completedTasks,
+    summaryTasks,
     tasks,
     recentActivity,
   ] = await Promise.all([
     supabase
       .from("tasks")
-      .select("id", { count: "exact", head: true })
+      .select("id, received_at, status:task_statuses!tasks_status_id_fkey(is_done)")
       .eq("workspace_id", workspaceId)
       .eq("assignee_id", userId)
-      .is("archived_at", null),
-    supabase
-      .from("tasks")
-      .select("id, status:task_statuses!tasks_status_id_fkey!inner(is_done)", {
-        count: "exact",
-        head: true,
-      })
-      .eq("workspace_id", workspaceId)
-      .eq("assignee_id", userId)
-      .is("received_at", null)
-      .eq("status.is_done", false)
-      .is("archived_at", null),
-    supabase
-      .from("tasks")
-      .select("id, status:task_statuses!tasks_status_id_fkey!inner(is_done)", {
-        count: "exact",
-        head: true,
-      })
-      .eq("workspace_id", workspaceId)
-      .eq("assignee_id", userId)
-      .not("received_at", "is", null)
-      .eq("status.is_done", false)
-      .is("archived_at", null),
-    supabase
-      .from("tasks")
-      .select("id, status:task_statuses!tasks_status_id_fkey!inner(is_done)", {
-        count: "exact",
-        head: true,
-      })
-      .eq("workspace_id", workspaceId)
-      .eq("assignee_id", userId)
-      .eq("status.is_done", true)
       .is("archived_at", null),
     supabase
       .from("tasks")
       .select(
-        "id, task_number, title, priority, due_date, received_at, status:task_statuses!tasks_status_id_fkey(id, name, name_ar, color, is_done), assignee:profiles!tasks_assignee_id_fkey(id, full_name, email)",
+        "id, task_number, title, priority, due_date, received_at, completion_requested_at, delivery_approved_at, transferred_to_pm_at, completion_approved_at, status:task_statuses!tasks_status_id_fkey(id, name, name_ar, color, is_done), assignee:profiles!tasks_assignee_id_fkey(id, full_name, email)",
       )
       .eq("workspace_id", workspaceId)
       .eq("assignee_id", userId)
       .is("archived_at", null)
+      .is("completion_approved_at", null)
       .order("created_at", { ascending: false }),
     supabase
       .from("task_activities")
@@ -139,12 +113,35 @@ export async function getEmployeeDashboardMetrics(
   ]);
 
   const rawTasks = (tasks.data ?? []) as unknown as RawDbTask[];
+  const summary = (summaryTasks.data ?? []) as Array<{
+    id: string;
+    received_at: string | null;
+    status: { is_done: boolean } | { is_done: boolean }[] | null;
+  }>;
+
+  const totalTasksCount = summary.length;
+  let unreceivedTasksCount = 0;
+  let remainingTasksCount = 0;
+  let completedTasksCount = 0;
+
+  for (const t of summary) {
+    const s = Array.isArray(t.status) ? t.status[0] : t.status;
+    const isDone = s?.is_done ?? false;
+    if (isDone) {
+      completedTasksCount++;
+    } else {
+      remainingTasksCount++;
+      if (!t.received_at) {
+        unreceivedTasksCount++;
+      }
+    }
+  }
 
   return {
-    totalTasks: totalTasks.count ?? 0,
-    unreceivedTasks: unreceivedTasks.count ?? 0,
-    remainingTasks: remainingTasks.count ?? 0,
-    completedTasks: completedTasks.count ?? 0,
+    totalTasks: totalTasksCount,
+    unreceivedTasks: unreceivedTasksCount,
+    remainingTasks: remainingTasksCount,
+    completedTasks: completedTasksCount,
     tasks: rawTasks.map((t) => ({
       ...t,
       status: Array.isArray(t.status) ? t.status[0] : t.status,
@@ -169,54 +166,23 @@ export async function getAdminDashboardMetrics(
   const supabase = await createClient();
 
   const [
-    totalTasks,
-    unreceivedTasks,
-    remainingTasks,
-    completedTasks,
+    summaryTasks,
     tasks,
     recentActivity,
   ] = await Promise.all([
     supabase
       .from("tasks")
-      .select("id", { count: "exact", head: true })
+      .select("id, received_at, status:task_statuses!tasks_status_id_fkey(is_done)")
       .eq("workspace_id", workspaceId)
-      .is("archived_at", null),
-    supabase
-      .from("tasks")
-      .select("id, status:task_statuses!tasks_status_id_fkey!inner(is_done)", {
-        count: "exact",
-        head: true,
-      })
-      .eq("workspace_id", workspaceId)
-      .is("received_at", null)
-      .eq("status.is_done", false)
-      .is("archived_at", null),
-    supabase
-      .from("tasks")
-      .select("id, status:task_statuses!tasks_status_id_fkey!inner(is_done)", {
-        count: "exact",
-        head: true,
-      })
-      .eq("workspace_id", workspaceId)
-      .not("received_at", "is", null)
-      .eq("status.is_done", false)
-      .is("archived_at", null),
-    supabase
-      .from("tasks")
-      .select("id, status:task_statuses!tasks_status_id_fkey!inner(is_done)", {
-        count: "exact",
-        head: true,
-      })
-      .eq("workspace_id", workspaceId)
-      .eq("status.is_done", true)
       .is("archived_at", null),
     supabase
       .from("tasks")
       .select(
-        "id, task_number, title, priority, due_date, received_at, status:task_statuses!tasks_status_id_fkey(id, name, name_ar, color, is_done), assignee:profiles!tasks_assignee_id_fkey(id, full_name, email)",
+        "id, task_number, title, priority, due_date, received_at, completion_requested_at, delivery_approved_at, transferred_to_pm_at, completion_approved_at, status:task_statuses!tasks_status_id_fkey(id, name, name_ar, color, is_done), assignee:profiles!tasks_assignee_id_fkey(id, full_name, email)",
       )
       .eq("workspace_id", workspaceId)
       .is("archived_at", null)
+      .is("completion_approved_at", null)
       .order("created_at", { ascending: false }),
     supabase
       .from("task_activities")
@@ -227,12 +193,35 @@ export async function getAdminDashboardMetrics(
   ]);
 
   const rawTasks = (tasks.data ?? []) as unknown as RawDbTask[];
+  const summary = (summaryTasks.data ?? []) as Array<{
+    id: string;
+    received_at: string | null;
+    status: { is_done: boolean } | { is_done: boolean }[] | null;
+  }>;
+
+  const totalTasksCount = summary.length;
+  let unreceivedTasksCount = 0;
+  let remainingTasksCount = 0;
+  let completedTasksCount = 0;
+
+  for (const t of summary) {
+    const s = Array.isArray(t.status) ? t.status[0] : t.status;
+    const isDone = s?.is_done ?? false;
+    if (isDone) {
+      completedTasksCount++;
+    } else {
+      remainingTasksCount++;
+      if (!t.received_at) {
+        unreceivedTasksCount++;
+      }
+    }
+  }
 
   return {
-    totalTasks: totalTasks.count ?? 0,
-    unreceivedTasks: unreceivedTasks.count ?? 0,
-    remainingTasks: remainingTasks.count ?? 0,
-    completedTasks: completedTasks.count ?? 0,
+    totalTasks: totalTasksCount,
+    unreceivedTasks: unreceivedTasksCount,
+    remainingTasks: remainingTasksCount,
+    completedTasks: completedTasksCount,
     tasks: rawTasks.map((t) => ({
       ...t,
       status: Array.isArray(t.status) ? t.status[0] : t.status,

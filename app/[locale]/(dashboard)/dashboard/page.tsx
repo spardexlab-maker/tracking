@@ -145,17 +145,36 @@ export default async function DashboardPage({
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {task.assignee && !task.received_at && (
-                      <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-xs font-medium text-amber-800">
-                        {locale === "ar" ? "غير مستلمة" : "Unreceived"}
-                      </span>
-                    )}
-                    <StatusBadge
-                      variant={task.status?.is_done ? "success" : "info"}
-                    >
-                      {locale === "ar" ? task.status?.name_ar : task.status?.name}
-                    </StatusBadge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(() => {
+                      const isUnreceived = task.assignee && !task.received_at && !task.status?.is_done;
+                      const statusText = isUnreceived
+                        ? (locale === "ar" ? "غير مستلمة" : "Unreceived")
+                        : (locale === "ar" ? task.status?.name_ar : task.status?.name);
+                      const statusVariant = isUnreceived ? "warning" : (task.status?.is_done ? "success" : "info");
+                      return (
+                        <>
+                          <StatusBadge variant={statusVariant}>
+                            {statusText}
+                          </StatusBadge>
+                          {task.completion_requested_at && !task.delivery_approved_at ? (
+                            <StatusBadge variant="warning">
+                              {dict.tasks.completionPending}
+                            </StatusBadge>
+                          ) : null}
+                          {task.completion_requested_at && task.delivery_approved_at && !task.transferred_to_pm_at && !task.completion_approved_at ? (
+                            <StatusBadge variant="success">
+                              {dict.tasks.delivered}
+                            </StatusBadge>
+                          ) : null}
+                          {task.completion_requested_at && task.transferred_to_pm_at && !task.completion_approved_at ? (
+                            <StatusBadge variant="info">
+                              {dict.tasks.awaitingPmSignOff}
+                            </StatusBadge>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </div>
                 </Link>
               ))}

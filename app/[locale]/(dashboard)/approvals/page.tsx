@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CheckCircle2 } from "lucide-react";
-import { approveTaskCompletionAction } from "@/lib/actions/task";
+import { approveTaskDeliveryAction, transferTaskToPmAction, approveTaskCompletionAction } from "@/lib/actions/task";
 import { requireUser } from "@/lib/auth/session";
 import { getPendingApprovalTasks } from "@/lib/db/tasks";
 import { getActiveWorkspaceContext } from "@/lib/db/workspace";
@@ -60,6 +60,9 @@ export default async function ApprovalsPage({
               ? task.assignee[0]
               : task.assignee;
             const status = Array.isArray(task.status) ? task.status[0] : task.status;
+            const isStage1 = task.delivery_approved_at === null;
+            const isStage2 = task.delivery_approved_at !== null && task.transferred_to_pm_at === null;
+            const isStage3 = task.transferred_to_pm_at !== null;
 
             return (
               <div
@@ -68,7 +71,15 @@ export default async function ApprovalsPage({
               >
                 <div className="min-w-0">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <StatusBadge variant="warning">{dict.tasks.completionPending}</StatusBadge>
+                    {isStage1 && (
+                      <StatusBadge variant="warning">{dict.tasks.completionPending}</StatusBadge>
+                    )}
+                    {isStage2 && (
+                      <StatusBadge variant="success">{dict.tasks.delivered}</StatusBadge>
+                    )}
+                    {isStage3 && (
+                      <StatusBadge variant="info">{dict.tasks.awaitingPmSignOff}</StatusBadge>
+                    )}
                     <StatusBadge variant={status?.is_done ? "success" : "info"}>
                       {locale === "ar" ? status?.name_ar : status?.name}
                     </StatusBadge>
@@ -85,22 +96,57 @@ export default async function ApprovalsPage({
                     <p>{dict.tasks.deliveryDate}: {formatDate(task.due_date, locale)}</p>
                   </div>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                <div className="flex flex-col gap-2 sm:flex-row lg:flex-col justify-end">
                   <Link
                     href={`/${locale}/tasks/${task.id}`}
                     className={cn(buttonVariants({ variant: "outline" }))}
                   >
                     {dict.tasks.viewTask}
                   </Link>
-                  <form action={approveTaskCompletionAction}>
-                    <input type="hidden" name="locale" value={locale} />
-                    <input type="hidden" name="taskId" value={task.id} />
-                    <input type="hidden" name="projectId" value={project?.id ?? ""} />
-                    <input type="hidden" name="returnTo" value={`/${locale}/approvals?saved=1`} />
-                    <SubmitButton pendingText={dict.tasks.approveCompletion}>
-                      {dict.tasks.approveCompletion}
-                    </SubmitButton>
-                  </form>
+                  {isStage1 && (
+                    <form action={approveTaskDeliveryAction}>
+                      <input type="hidden" name="locale" value={locale} />
+                      <input type="hidden" name="taskId" value={task.id} />
+                      <input type="hidden" name="projectId" value={project?.id ?? ""} />
+                      <input type="hidden" name="returnTo" value={`/${locale}/approvals?saved=1`} />
+                      <SubmitButton pendingText={dict.tasks.approveDelivery}>
+                        {dict.tasks.approveDelivery}
+                      </SubmitButton>
+                    </form>
+                  )}
+                  {isStage2 && (
+                    <div className="flex flex-wrap gap-2">
+                      <form action={transferTaskToPmAction}>
+                        <input type="hidden" name="locale" value={locale} />
+                        <input type="hidden" name="taskId" value={task.id} />
+                        <input type="hidden" name="projectId" value={project?.id ?? ""} />
+                        <input type="hidden" name="returnTo" value={`/${locale}/approvals?saved=1`} />
+                        <SubmitButton variant="outline" pendingText={dict.tasks.transferToPm}>
+                          {dict.tasks.transferToPm}
+                        </SubmitButton>
+                      </form>
+                      <form action={approveTaskCompletionAction}>
+                        <input type="hidden" name="locale" value={locale} />
+                        <input type="hidden" name="taskId" value={task.id} />
+                        <input type="hidden" name="projectId" value={project?.id ?? ""} />
+                        <input type="hidden" name="returnTo" value={`/${locale}/approvals?saved=1`} />
+                        <SubmitButton pendingText={dict.tasks.markCompleted}>
+                          {dict.tasks.markCompleted}
+                        </SubmitButton>
+                      </form>
+                    </div>
+                  )}
+                  {isStage3 && (
+                    <form action={approveTaskCompletionAction}>
+                      <input type="hidden" name="locale" value={locale} />
+                      <input type="hidden" name="taskId" value={task.id} />
+                      <input type="hidden" name="projectId" value={project?.id ?? ""} />
+                      <input type="hidden" name="returnTo" value={`/${locale}/approvals?saved=1`} />
+                      <SubmitButton pendingText={dict.tasks.approveCompletion}>
+                        {dict.tasks.approveCompletion}
+                      </SubmitButton>
+                    </form>
+                  )}
                 </div>
               </div>
             );

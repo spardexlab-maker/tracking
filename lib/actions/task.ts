@@ -38,7 +38,22 @@ export async function createTaskAction(formData: FormData) {
   });
 
   if (!parsed.success || !workspaceId) {
-    redirect(`/${locale}/projects?error=task`);
+    console.error("TASK_VALIDATION_FAILURE:", {
+      success: parsed.success,
+      errors: parsed.success ? null : parsed.error.flatten().fieldErrors,
+      workspaceId,
+      formData: {
+        projectId: formData.get("projectId"),
+        title: formData.get("title"),
+        description: formData.get("description"),
+        statusId: formData.get("statusId"),
+        priority: formData.get("priority"),
+        assigneeId: formData.get("assigneeId"),
+        startDate: formData.get("startDate"),
+        dueDate: formData.get("dueDate"),
+      }
+    });
+    redirect(`/${locale}/tasks?error=task`);
   }
 
   const supabase = await createClient();
@@ -57,16 +72,18 @@ export async function createTaskAction(formData: FormData) {
       due_date: nullable(parsed.data.dueDate),
       created_by: user.id,
       updated_by: user.id,
+      received_at: parsed.data.assigneeId === user.id ? new Date().toISOString() : null,
     })
     .select("id")
     .single();
 
   if (error) {
-    redirect(`/${locale}/projects/${parsed.data.projectId}?error=task`);
+    redirect(`/${locale}/tasks?error=task`);
   }
 
   if (parsed.data.assigneeId) {
-    await supabase.from("project_members").upsert(
+    const adminClient = createAdminClient();
+    await adminClient.from("project_members").upsert(
       {
         project_id: parsed.data.projectId,
         user_id: parsed.data.assigneeId,
@@ -98,8 +115,47 @@ export async function createTaskAction(formData: FormData) {
     }
   }
 
+  // Notify leaders of employee self-assigned tasks
+  if (task && parsed.data.assigneeId === user.id) {
+    const { data: member } = await supabase
+      .from("workspace_members")
+      .select("role")
+      .eq("workspace_id", workspaceId)
+      .eq("user_id", user.id)
+      .single();
+
+    const isLeader = ["owner", "admin", "manager"].includes(member?.role || "");
+    if (!isLeader) {
+      const { data: leaders } = await supabase
+        .from("workspace_members")
+        .select("user_id")
+        .eq("workspace_id", workspaceId)
+        .in("role", ["owner", "admin", "manager"]);
+
+      if (leaders && leaders.length > 0) {
+        const fullName = user.user_metadata?.full_name || user.email || "";
+        const adminClient = createAdminClient();
+        const notificationInserts = leaders.map((leader) => ({
+          workspace_id: workspaceId,
+          user_id: leader.user_id,
+          actor_id: user.id,
+          task_id: task.id,
+          type: "task_self_assigned",
+          title: locale === "ar" ? "مهمة ذاتية جديدة" : "New Self-Assigned Task",
+          body:
+            locale === "ar"
+              ? `قام الموظف ${fullName} بإضافة مهمة لنفسه: ${parsed.data.title}`
+              : `Employee ${fullName} added a task for themselves: ${parsed.data.title}`,
+        }));
+        await adminClient.from("notifications").insert(notificationInserts);
+      }
+    }
+  }
+
+  revalidatePath(`/${locale}/tasks`);
+  revalidatePath(`/${locale}/tasks/${task.id}`);
   revalidatePath(`/${locale}/projects/${parsed.data.projectId}`);
-  redirect(`/${locale}/projects/${parsed.data.projectId}?task-created=1`);
+  redirect(`/${locale}/tasks/${task.id}?task-created=1`);
 }
 
 export async function updateTaskAction(formData: FormData) {
@@ -135,7 +191,8 @@ export async function updateTaskAction(formData: FormData) {
     .eq("id", taskId);
 
   if (parsed.data.assigneeId) {
-    await supabase.from("project_members").upsert(
+    const adminClient = createAdminClient();
+    await adminClient.from("project_members").upsert(
       {
         project_id: parsed.data.projectId,
         user_id: parsed.data.assigneeId,
@@ -160,6 +217,7 @@ export async function archiveTaskAction(formData: FormData) {
     .eq("id", taskId);
 
   revalidatePath(`/${locale}/tasks`);
+  redirect(`/${locale}/tasks`);
 }
 
 export async function deleteTaskAction(formData: FormData) {
@@ -171,7 +229,11 @@ export async function deleteTaskAction(formData: FormData) {
 
   await supabase.from("tasks").delete().eq("id", taskId);
 
-  revalidatePath(`/${locale}/projects/${projectId}`);
+  revalidatePath(`/${locale}/tasks`);
+  if (projectId) {
+    revalidatePath(`/${locale}/projects/${projectId}`);
+  }
+  redirect(`/${locale}/tasks`);
 }
 
 export async function updateTaskStatusAction(formData: FormData) {
@@ -192,7 +254,7 @@ export async function updateTaskStatusAction(formData: FormData) {
 
 export async function updateTaskProgressAction(formData: FormData) {
   const locale = getLocale(formData);
-  await requireUser(locale);
+  const user = await requireUser(locale);
   const parsed = taskProgressSchema.safeParse({
     taskId: formData.get("taskId"),
     statusId: formData.get("statusId"),
@@ -215,6 +277,29 @@ export async function updateTaskProgressAction(formData: FormData) {
     redirect(`/${locale}/tasks/${parsed.data.taskId}?error=progress`);
   }
 
+  const admin = createAdminClient();
+  const { data: task } = await admin
+    .from("tasks")
+    .select("title, workspace_id, created_by, assignee_id, completion_requested_at")
+    .eq("id", parsed.data.taskId)
+    .single();
+
+  if (task && task.completion_requested_at && task.created_by && task.created_by !== user.id) {
+    const fullName = user.user_metadata?.full_name || user.email || "";
+    await admin.from("notifications").insert({
+      workspace_id: task.workspace_id,
+      user_id: task.created_by,
+      actor_id: user.id,
+      task_id: parsed.data.taskId,
+      type: "task_admin_approved",
+      title: locale === "ar" ? "طلب اعتماد اكتمال" : "Completion Approval Requested",
+      body:
+        locale === "ar"
+          ? `قام الموظف ${fullName} بطلب اعتماد اكتمال المهمة: ${task.title}`
+          : `Employee ${fullName} has requested completion approval for: ${task.title}`,
+    });
+  }
+
   revalidatePath(`/${locale}/tasks/${parsed.data.taskId}`);
   if (projectId) {
     revalidatePath(`/${locale}/projects/${projectId}`);
@@ -222,19 +307,174 @@ export async function updateTaskProgressAction(formData: FormData) {
   redirect(`/${locale}/tasks/${parsed.data.taskId}?progress-updated=1`);
 }
 
-export async function approveTaskCompletionAction(formData: FormData) {
+export async function approveTaskDeliveryAction(formData: FormData) {
   const locale = getLocale(formData);
-  await requireUser(locale);
+  const user = await requireUser(locale);
   const taskId = String(formData.get("taskId") ?? "");
   const projectId = String(formData.get("projectId") ?? "");
   const returnTo = String(formData.get("returnTo") ?? "");
   const supabase = await createClient();
 
-  await supabase.rpc("approve_task_completion", {
+  const { error } = await supabase.rpc("approve_task_delivery", {
     target_task_id: taskId,
   });
 
+  if (error) {
+    redirect(`/${locale}/tasks/${taskId}?error=delivery-approval-failed`);
+  }
+
+  const admin = createAdminClient();
+  const { data: task } = await admin
+    .from("tasks")
+    .select("title, workspace_id, assignee_id")
+    .eq("id", taskId)
+    .single();
+
+  if (task) {
+    await admin.from("task_activities").insert({
+      task_id: taskId,
+      workspace_id: task.workspace_id,
+      actor_id: user.id,
+      activity_type: "task_delivery_approved",
+      payload: { title: task.title },
+    });
+
+    if (task.assignee_id) {
+      await admin.from("notifications").insert({
+        workspace_id: task.workspace_id,
+        user_id: task.assignee_id,
+        actor_id: user.id,
+        task_id: taskId,
+        type: "task_delivery_approved",
+        title: locale === "ar" ? "تم اعتماد تسليم المهمة" : "Task delivery approved",
+        body:
+          locale === "ar"
+            ? `تم اعتماد تسليم مهمتك "${task.title}" من قبل المسؤول.`
+            : `Your task delivery for "${task.title}" has been approved by admin.`,
+      });
+    }
+  }
+
   revalidatePath(`/${locale}/tasks/${taskId}`);
+  revalidatePath(`/${locale}/approvals`);
+  if (projectId) {
+    revalidatePath(`/${locale}/projects/${projectId}`);
+  }
+  if (returnTo) {
+    redirect(returnTo);
+  }
+  redirect(`/${locale}/tasks/${taskId}?saved=1`);
+}
+
+export async function transferTaskToPmAction(formData: FormData) {
+  const locale = getLocale(formData);
+  const user = await requireUser(locale);
+  const taskId = String(formData.get("taskId") ?? "");
+  const projectId = String(formData.get("projectId") ?? "");
+  const returnTo = String(formData.get("returnTo") ?? "");
+  const supabase = await createClient();
+
+  const { error } = await supabase.rpc("transfer_task_to_pm", {
+    target_task_id: taskId,
+  });
+
+  if (error) {
+    redirect(`/${locale}/tasks/${taskId}?error=transfer-pm-failed`);
+  }
+
+  const admin = createAdminClient();
+  const { data: task } = await admin
+    .from("tasks")
+    .select("title, workspace_id, assignee_id")
+    .eq("id", taskId)
+    .single();
+
+  if (task) {
+    await admin.from("task_activities").insert({
+      task_id: taskId,
+      workspace_id: task.workspace_id,
+      actor_id: user.id,
+      activity_type: "task_transferred_to_pm",
+      payload: { title: task.title },
+    });
+
+    if (task.assignee_id) {
+      await admin.from("notifications").insert({
+        workspace_id: task.workspace_id,
+        user_id: task.assignee_id,
+        actor_id: user.id,
+        task_id: taskId,
+        type: "task_transferred_to_pm",
+        title: locale === "ar" ? "تم تحويل المهمة لمدير المشاريع" : "Task transferred to PM",
+        body:
+          locale === "ar"
+            ? `تم تحويل مهمتك "${task.title}" إلى مدير المشاريع وهي بانتظار الهامش.`
+            : `Your task "${task.title}" has been transferred to PM and is awaiting sign-off margin.`,
+      });
+    }
+  }
+
+  revalidatePath(`/${locale}/tasks/${taskId}`);
+  revalidatePath(`/${locale}/approvals`);
+  if (projectId) {
+    revalidatePath(`/${locale}/projects/${projectId}`);
+  }
+  if (returnTo) {
+    redirect(returnTo);
+  }
+  redirect(`/${locale}/tasks/${taskId}?saved=1`);
+}
+
+export async function approveTaskCompletionAction(formData: FormData) {
+  const locale = getLocale(formData);
+  const user = await requireUser(locale);
+  const taskId = String(formData.get("taskId") ?? "");
+  const projectId = String(formData.get("projectId") ?? "");
+  const returnTo = String(formData.get("returnTo") ?? "");
+  const supabase = await createClient();
+
+  const { error } = await supabase.rpc("approve_task_completion", {
+    target_task_id: taskId,
+  });
+
+  if (error) {
+    redirect(`/${locale}/tasks/${taskId}?error=completion-approval-failed`);
+  }
+
+  const admin = createAdminClient();
+  const { data: task } = await admin
+    .from("tasks")
+    .select("title, workspace_id, assignee_id")
+    .eq("id", taskId)
+    .single();
+
+  if (task) {
+    await admin.from("task_activities").insert({
+      task_id: taskId,
+      workspace_id: task.workspace_id,
+      actor_id: user.id,
+      activity_type: "task_completed",
+      payload: { title: task.title },
+    });
+
+    if (task.assignee_id) {
+      await admin.from("notifications").insert({
+        workspace_id: task.workspace_id,
+        user_id: task.assignee_id,
+        actor_id: user.id,
+        task_id: taskId,
+        type: "task_completed",
+        title: locale === "ar" ? "تم إكمال المهمة نهائياً" : "Task completed with final approval",
+        body:
+          locale === "ar"
+            ? `تمت الموافقة النهائية واعتماد اكتمال مهمتك: ${task.title}`
+            : `Task "${task.title}" has been marked completed with final approval.`,
+      });
+    }
+  }
+
+  revalidatePath(`/${locale}/tasks/${taskId}`);
+  revalidatePath(`/${locale}/approvals`);
   if (projectId) {
     revalidatePath(`/${locale}/projects/${projectId}`);
   }

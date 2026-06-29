@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const taskSchema = z.object({
   projectId: z.string().uuid(),
-  title: z.string().trim().min(2).max(220),
+  title: z.string().trim().min(1).max(220),
   description: z.string().trim().max(4000).optional().or(z.literal("")),
   statusId: z.string().uuid(),
   priority: z.enum(["low", "medium", "high", "urgent"]),
