@@ -94,7 +94,8 @@ export async function createTaskAction(formData: FormData) {
 
   const attachment = formData.get("attachment");
   if (task && attachment instanceof File && attachment.size > 0) {
-    const objectPath = `${workspaceId}/${task.id}/${crypto.randomUUID()}-${attachment.name}`;
+    const extension = attachment.name.includes(".") ? attachment.name.split(".").pop() : "";
+    const objectPath = `${workspaceId}/${task.id}/${crypto.randomUUID()}${extension ? `.${extension}` : ""}`;
     const fileBuffer = Buffer.from(await attachment.arrayBuffer());
     const { error: uploadError } = await supabase.storage
       .from("task-attachments")

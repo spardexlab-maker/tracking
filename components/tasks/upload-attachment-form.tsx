@@ -28,7 +28,8 @@ export function UploadAttachmentForm({
     setBusy(true);
     try {
       const supabase = createClient();
-      const path = `${workspaceId}/${taskId}/${crypto.randomUUID()}-${file.name}`;
+      const extension = file.name.includes(".") ? file.name.split(".").pop() : "";
+      const path = `${workspaceId}/${taskId}/${crypto.randomUUID()}${extension ? `.${extension}` : ""}`;
       const { error: uploadError } = await supabase.storage
         .from("task-attachments")
         .upload(path, file, { upsert: false });
