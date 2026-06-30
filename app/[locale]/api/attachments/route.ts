@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const schema = z.object({
   taskId: z.string().uuid(),
@@ -26,7 +27,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const { error } = await supabase.from("task_attachments").insert({
+  const adminClient = createAdminClient();
+  const { error } = await adminClient.from("task_attachments").insert({
     task_id: parsed.data.taskId,
     workspace_id: parsed.data.workspaceId,
     uploaded_by: user.id,

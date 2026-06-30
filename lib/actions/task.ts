@@ -104,7 +104,8 @@ export async function createTaskAction(formData: FormData) {
       });
 
     if (!uploadError) {
-      await supabase.from("task_attachments").insert({
+      const adminClient = createAdminClient();
+      const { error: dbError } = await adminClient.from("task_attachments").insert({
         task_id: task.id,
         workspace_id: workspaceId,
         uploaded_by: user.id,
@@ -113,6 +114,9 @@ export async function createTaskAction(formData: FormData) {
         mime_type: attachment.type || null,
         file_size: attachment.size,
       });
+      if (dbError) {
+        console.error("SERVER_SIDE_ATTACHMENT_INSERT_FAILURE:", dbError);
+      }
     } else {
       console.error("SERVER_SIDE_ATTACHMENT_UPLOAD_FAILURE:", uploadError);
     }
