@@ -828,7 +828,8 @@ export async function deleteCommentAction(formData: FormData) {
   }
 
   // 3. Delete comment
-  await supabase
+  const adminClient = createAdminClient();
+  await adminClient
     .from("task_comments")
     .delete()
     .eq("id", commentId);
