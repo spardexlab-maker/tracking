@@ -568,16 +568,79 @@ export async function addCommentAction(formData: FormData) {
     redirect(`/${locale}/tasks/${String(formData.get("taskId") ?? "")}?error=comment`);
   }
 
+  let body = parsed.data.body;
+  const attachment = formData.get("attachment");
+
+  if (attachment instanceof File && attachment.size > 0) {
+    const supabase = await createClient();
+    const extension = attachment.name.includes(".") ? attachment.name.split(".").pop() : "";
+    const objectPath = `${workspaceId}/${parsed.data.taskId}/${crypto.randomUUID()}${extension ? `.${extension}` : ""}`;
+    const fileBuffer = Buffer.from(await attachment.arrayBuffer());
+
+    const { error: uploadError } = await supabase.storage
+      .from("task-attachments")
+      .upload(objectPath, fileBuffer, {
+        contentType: attachment.type || undefined,
+        upsert: false,
+      });
+
+    if (!uploadError) {
+      const adminClient = createAdminClient();
+      const { data: attachmentRecord, error: dbError } = await adminClient
+        .from("task_attachments")
+        .insert({
+          task_id: parsed.data.taskId,
+          workspace_id: workspaceId,
+          uploaded_by: user.id,
+          object_path: objectPath,
+          file_name: attachment.name,
+          mime_type: attachment.type || null,
+          file_size: attachment.size,
+        })
+        .select("id")
+        .single();
+
+      if (!dbError && attachmentRecord) {
+        body = `${body}\n\n[attachment:${attachmentRecord.id}]`;
+      } else if (dbError) {
+        console.error("COMMENT_ATTACHMENT_INSERT_FAILURE:", dbError);
+      }
+    } else {
+      console.error("COMMENT_ATTACHMENT_UPLOAD_FAILURE:", uploadError);
+    }
+  }
+
   const supabase = await createClient();
   await supabase.from("task_comments").insert({
     task_id: parsed.data.taskId,
     workspace_id: workspaceId,
     author_id: user.id,
-    body: parsed.data.body,
+    body: body,
   });
 
   revalidatePath(`/${locale}/tasks/${parsed.data.taskId}`);
   redirect(`/${locale}/tasks/${parsed.data.taskId}?comment-added=1`);
+}
+
+export async function updateTaskTitleAction(formData: FormData) {
+  const locale = getLocale(formData);
+  const user = await requireUser(locale);
+  const taskId = String(formData.get("taskId") ?? "");
+  const title = String(formData.get("title") ?? "").trim();
+
+  if (!taskId || !title) return;
+
+  const supabase = await createClient();
+  await supabase
+    .from("tasks")
+    .update({
+      title: title,
+      updated_by: user.id,
+    })
+    .eq("id", taskId);
+
+  revalidatePath(`/${locale}/tasks/${taskId}`);
+  redirect(`/${locale}/tasks/${taskId}?saved=1`);
 }
 
 export async function addChecklistItemAction(formData: FormData) {

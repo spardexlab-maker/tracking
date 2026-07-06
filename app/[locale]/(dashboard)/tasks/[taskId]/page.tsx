@@ -13,7 +13,11 @@ import {
   updateTaskAction,
   updateTaskProgressAction,
   receiveTaskAction,
+  updateTaskTitleAction,
+  addCommentAction,
 } from "@/lib/actions/task";
+import { FileText, ImageIcon } from "lucide-react";
+import Link from "next/link";
 import { requireUser } from "@/lib/auth/session";
 import {
   getTask,
@@ -93,8 +97,25 @@ export default async function TaskDetailPage({
       <section className="space-y-4">
         <Card className="py-0">
           <CardHeader className="border-b py-4">
-            <CardTitle>
-              #{task.task_number} {task.title}
+            <CardTitle className="w-full">
+              {canManageTask ? (
+                <form action={updateTaskTitleAction} className="flex flex-wrap items-center gap-3 w-full">
+                  <input type="hidden" name="locale" value={locale} />
+                  <input type="hidden" name="taskId" value={task.id} />
+                  <span className="text-xl font-bold text-muted-foreground shrink-0">#{task.task_number}</span>
+                  <Input
+                    name="title"
+                    defaultValue={task.title}
+                    required
+                    className="h-10 text-lg font-bold bg-transparent border-none hover:bg-muted/40 focus:bg-background focus:ring-1 px-2 py-1 rounded-xl flex-1 min-w-[200px]"
+                  />
+                  <Button size="sm" variant="outline" className="h-9 rounded-xl px-3 hover:bg-primary hover:text-primary-foreground text-xs font-semibold shrink-0">
+                    {locale === "ar" ? "حفظ العنوان" : "Save Title"}
+                  </Button>
+                </form>
+              ) : (
+                <span>#{task.task_number} {task.title}</span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 py-4">
@@ -272,18 +293,102 @@ export default async function TaskDetailPage({
                 {detail.comments.map((comment) => {
                   const authorObj = Array.isArray(comment.author) ? comment.author[0] : comment.author;
                   const authorName = authorObj?.full_name ?? authorObj?.email ?? (locale === "ar" ? "مستخدم غير معروف" : "Unknown User");
+                  
+                  // Parse attachment if exists in body
+                  const attachmentRegex = /\[attachment:([0-9a-fA-F-]{36})\]/;
+                  const match = comment.body.match(attachmentRegex);
+                  const attachmentId = match ? match[1] : null;
+                  const cleanBody = comment.body.replace(attachmentRegex, "").trim();
+                  
+                  // Find matching attachment from the task attachments collection
+                  const linkedAttachment = attachmentId 
+                    ? detail.attachments.find(att => att.id === attachmentId)
+                    : null;
+
                   return (
                     <div key={comment.id} className="rounded-2xl border bg-muted/20 p-3 text-start">
                       <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 mb-2">
                         <span className="text-sm font-semibold text-foreground">{authorName}</span>
                         <span className="text-xs text-muted-foreground">{formatDate(comment.created_at, locale)}</span>
                       </div>
-                      <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{comment.body}</p>
+                      {cleanBody && (
+                        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{cleanBody}</p>
+                      )}
+                      
+                      {linkedAttachment && (
+                        <div className="mt-3 border-t border-border/30 pt-3">
+                          {linkedAttachment.mime_type?.startsWith("image/") ? (
+                            <Link 
+                              href={`/${locale}/api/attachments/${linkedAttachment.id}`}
+                              target="_blank"
+                              className="block rounded-xl overflow-hidden border max-w-sm hover:opacity-95 transition-opacity"
+                            >
+                              <img 
+                                src={`/${locale}/api/attachments/${linkedAttachment.id}`} 
+                                alt={linkedAttachment.file_name} 
+                                className="w-full max-h-60 object-contain bg-slate-50 dark:bg-slate-900"
+                              />
+                            </Link>
+                          ) : (
+                            <Link
+                              href={`/${locale}/api/attachments/${linkedAttachment.id}`}
+                              target="_blank"
+                              className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3 text-xs hover:bg-muted transition-colors max-w-sm"
+                            >
+                              <span className="flex items-center gap-2 min-w-0">
+                                <FileText className="size-4 shrink-0 text-primary" />
+                                <span className="truncate font-medium text-foreground">{linkedAttachment.file_name}</span>
+                              </span>
+                              <span className="text-primary font-semibold shrink-0">{dict.common.open}</span>
+                            </Link>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             )}
+
+            <div className="border-t pt-4 mt-2">
+              <form action={addCommentAction} className="grid gap-3" encType="multipart/form-data">
+                <input type="hidden" name="locale" value={locale} />
+                <input type="hidden" name="taskId" value={task.id} />
+                <input type="hidden" name="workspaceId" value={task.workspace_id} />
+                
+                <Textarea
+                  name="body"
+                  placeholder={locale === "ar" ? "أكتب تعليقاً..." : "Write a comment..."}
+                  required
+                  rows={3}
+                  className="resize-none"
+                />
+                
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <label className="flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-xs font-semibold cursor-pointer hover:bg-muted/50 transition-colors">
+                    <span className="text-muted-foreground">{locale === "ar" ? "إرفاق ملف/صورة" : "Attach File/Image"}</span>
+                    <input
+                      type="file"
+                      name="attachment"
+                      accept="image/*,application/pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const label = e.currentTarget.previousElementSibling;
+                          if (label) {
+                            label.textContent = file.name;
+                          }
+                        }
+                      }}
+                    />
+                  </label>
+                  <Button size="sm" className="px-5">
+                    {locale === "ar" ? "إرسال التعليق" : "Send Comment"}
+                  </Button>
+                </div>
+              </form>
+            </div>
           </CardContent>
         </Card>
 
