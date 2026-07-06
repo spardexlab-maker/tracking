@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/select";
 import { UploadAttachmentForm } from "@/components/tasks/upload-attachment-form";
 import { AttachmentList } from "@/components/tasks/attachment-list";
+import { CommentForm } from "@/components/tasks/comment-form";
 import { RealtimeRefresh } from "@/components/realtime/realtime-refresh";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 
@@ -350,45 +351,14 @@ export default async function TaskDetailPage({
               </div>
             )}
 
-            <div className="border-t pt-4 mt-2">
-              <form action={addCommentAction} className="grid gap-3" encType="multipart/form-data">
-                <input type="hidden" name="locale" value={locale} />
-                <input type="hidden" name="taskId" value={task.id} />
-                <input type="hidden" name="workspaceId" value={task.workspace_id} />
-                
-                <Textarea
-                  name="body"
-                  placeholder={locale === "ar" ? "أكتب تعليقاً..." : "Write a comment..."}
-                  required
-                  rows={3}
-                  className="resize-none"
-                />
-                
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <label className="flex items-center gap-2 rounded-xl border bg-background px-3 py-2 text-xs font-semibold cursor-pointer hover:bg-muted/50 transition-colors">
-                    <span className="text-muted-foreground">{locale === "ar" ? "إرفاق ملف/صورة" : "Attach File/Image"}</span>
-                    <input
-                      type="file"
-                      name="attachment"
-                      accept="image/*,application/pdf"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const label = e.currentTarget.previousElementSibling;
-                          if (label) {
-                            label.textContent = file.name;
-                          }
-                        }
-                      }}
-                    />
-                  </label>
-                  <Button size="sm" className="px-5">
-                    {locale === "ar" ? "إرسال التعليق" : "Send Comment"}
-                  </Button>
-                </div>
-              </form>
-            </div>
+            <CommentForm
+              locale={locale}
+              taskId={task.id}
+              workspaceId={task.workspace_id}
+              placeholderText={locale === "ar" ? "أكتب تعليقاً..." : "Write a comment..."}
+              attachText={locale === "ar" ? "إرفاق ملف/صورة" : "Attach File/Image"}
+              submitText={locale === "ar" ? "إرسال التعليق" : "Send Comment"}
+            />
           </CardContent>
         </Card>
 
