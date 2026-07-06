@@ -44,6 +44,7 @@ import {
 import { UploadAttachmentForm } from "@/components/tasks/upload-attachment-form";
 import { AttachmentList } from "@/components/tasks/attachment-list";
 import { CommentForm } from "@/components/tasks/comment-form";
+import { CommentItem } from "@/components/tasks/comment-item";
 import { RealtimeRefresh } from "@/components/realtime/realtime-refresh";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 
@@ -293,59 +294,28 @@ export default async function TaskDetailPage({
               <div className="space-y-3">
                 {detail.comments.map((comment) => {
                   const authorObj = Array.isArray(comment.author) ? comment.author[0] : comment.author;
-                  const authorName = authorObj?.full_name ?? authorObj?.email ?? (locale === "ar" ? "مستخدم غير معروف" : "Unknown User");
-                  
-                  // Parse attachment if exists in body
-                  const attachmentRegex = /\[attachment:([0-9a-fA-F-]{36})\]/;
-                  const match = comment.body.match(attachmentRegex);
-                  const attachmentId = match ? match[1] : null;
-                  const cleanBody = comment.body.replace(attachmentRegex, "").trim();
-                  
-                  // Find matching attachment from the task attachments collection
-                  const linkedAttachment = attachmentId 
-                    ? detail.attachments.find(att => att.id === attachmentId)
-                    : null;
-
+                  const normalizedComment = {
+                    id: comment.id,
+                    body: comment.body,
+                    created_at: comment.created_at,
+                    author: {
+                      id: authorObj?.id ?? "",
+                      full_name: authorObj?.full_name ?? null,
+                      email: authorObj?.email ?? "",
+                    }
+                  };
                   return (
-                    <div key={comment.id} className="rounded-2xl border bg-muted/20 p-3 text-start">
-                      <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 mb-2">
-                        <span className="text-sm font-semibold text-foreground">{authorName}</span>
-                        <span className="text-xs text-muted-foreground">{formatDate(comment.created_at, locale)}</span>
-                      </div>
-                      {cleanBody && (
-                        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">{cleanBody}</p>
-                      )}
-                      
-                      {linkedAttachment && (
-                        <div className="mt-3 border-t border-border/30 pt-3">
-                          {linkedAttachment.mime_type?.startsWith("image/") ? (
-                            <Link 
-                              href={`/${locale}/api/attachments/${linkedAttachment.id}`}
-                              target="_blank"
-                              className="block rounded-xl overflow-hidden border max-w-sm hover:opacity-95 transition-opacity"
-                            >
-                              <img 
-                                src={`/${locale}/api/attachments/${linkedAttachment.id}`} 
-                                alt={linkedAttachment.file_name} 
-                                className="w-full max-h-60 object-contain bg-slate-50 dark:bg-slate-900"
-                              />
-                            </Link>
-                          ) : (
-                            <Link
-                              href={`/${locale}/api/attachments/${linkedAttachment.id}`}
-                              target="_blank"
-                              className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3 text-xs hover:bg-muted transition-colors max-w-sm"
-                            >
-                              <span className="flex items-center gap-2 min-w-0">
-                                <FileText className="size-4 shrink-0 text-primary" />
-                                <span className="truncate font-medium text-foreground">{linkedAttachment.file_name}</span>
-                              </span>
-                              <span className="text-primary font-semibold shrink-0">{dict.common.open}</span>
-                            </Link>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <CommentItem
+                      key={comment.id}
+                      comment={normalizedComment}
+                      currentUserId={user.id}
+                      isLeader={canManageTask}
+                      locale={locale as "ar" | "en"}
+                      taskId={task.id}
+                      workspaceId={task.workspace_id}
+                      attachments={detail.attachments}
+                      dict={dict}
+                    />
                   );
                 })}
               </div>

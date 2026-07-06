@@ -643,6 +643,200 @@ export async function updateTaskTitleAction(formData: FormData) {
   redirect(`/${locale}/tasks/${taskId}?saved=1`);
 }
 
+export async function editCommentAction(formData: FormData) {
+  const locale = getLocale(formData);
+  const user = await requireUser(locale);
+  const commentId = String(formData.get("commentId") ?? "");
+  const taskId = String(formData.get("taskId") ?? "");
+  const workspaceId = String(formData.get("workspaceId") ?? "");
+  const bodyText = String(formData.get("body") ?? "").trim();
+  const deleteAttachment = formData.get("deleteAttachment") === "true";
+
+  if (!commentId || !taskId || !workspaceId || !bodyText) return;
+
+  const supabase = await createClient();
+
+  // 1. Fetch comment to verify ownership
+  const { data: comment } = await supabase
+    .from("task_comments")
+    .select("author_id, body")
+    .eq("id", commentId)
+    .maybeSingle();
+
+  if (!comment || comment.author_id !== user.id) {
+    redirect(`/${locale}/tasks/${taskId}?error=unauthorized`);
+  }
+
+  let newBody = bodyText;
+
+  // 2. Handle old attachment deletion
+  const attachmentRegex = /\[attachment:([0-9a-fA-F-]{36})\]/;
+  const match = comment.body.match(attachmentRegex);
+  const oldAttachmentId = match ? match[1] : null;
+
+  if (oldAttachmentId && deleteAttachment) {
+    const { data: oldAttachment } = await supabase
+      .from("task_attachments")
+      .select("object_path")
+      .eq("id", oldAttachmentId)
+      .maybeSingle();
+
+    if (oldAttachment) {
+      await supabase.storage
+        .from("task-attachments")
+        .remove([oldAttachment.object_path]);
+
+      const adminClient = createAdminClient();
+      await adminClient
+        .from("task_attachments")
+        .delete()
+        .eq("id", oldAttachmentId);
+    }
+  } else if (oldAttachmentId && !deleteAttachment) {
+    // Keep old attachment
+    newBody = `${newBody}\n\n[attachment:${oldAttachmentId}]`;
+  }
+
+  // 3. Handle new attachment uploading
+  const newAttachment = formData.get("attachment");
+  if (newAttachment instanceof File && newAttachment.size > 0) {
+    // If there was an old attachment and we didn't check delete, delete it first to replace it
+    if (oldAttachmentId && !deleteAttachment) {
+      const { data: oldAttachment } = await supabase
+        .from("task_attachments")
+        .select("object_path")
+        .eq("id", oldAttachmentId)
+        .maybeSingle();
+
+      if (oldAttachment) {
+        await supabase.storage
+          .from("task-attachments")
+          .remove([oldAttachment.object_path]);
+
+        const adminClient = createAdminClient();
+        await adminClient
+          .from("task_attachments")
+          .delete()
+          .eq("id", oldAttachmentId);
+      }
+    }
+
+    const extension = newAttachment.name.includes(".") ? newAttachment.name.split(".").pop() : "";
+    const objectPath = `${workspaceId}/${taskId}/${crypto.randomUUID()}${extension ? `.${extension}` : ""}`;
+    const fileBuffer = Buffer.from(await newAttachment.arrayBuffer());
+
+    const { error: uploadError } = await supabase.storage
+      .from("task-attachments")
+      .upload(objectPath, fileBuffer, {
+        contentType: newAttachment.type || undefined,
+        upsert: false,
+      });
+
+    if (!uploadError) {
+      const adminClient = createAdminClient();
+      const { data: attachmentRecord, error: dbError } = await adminClient
+        .from("task_attachments")
+        .insert({
+          task_id: taskId,
+          workspace_id: workspaceId,
+          uploaded_by: user.id,
+          object_path: objectPath,
+          file_name: newAttachment.name,
+          mime_type: newAttachment.type || null,
+          file_size: newAttachment.size,
+        })
+        .select("id")
+        .single();
+
+      if (!dbError && attachmentRecord) {
+        newBody = newBody.replace(attachmentRegex, "").trim();
+        newBody = `${newBody}\n\n[attachment:${attachmentRecord.id}]`;
+      }
+    }
+  }
+
+  // 4. Update comment text
+  await supabase
+    .from("task_comments")
+    .update({
+      body: newBody,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", commentId);
+
+  revalidatePath(`/${locale}/tasks/${taskId}`);
+  redirect(`/${locale}/tasks/${taskId}?comment-updated=1`);
+}
+
+export async function deleteCommentAction(formData: FormData) {
+  const locale = getLocale(formData);
+  const user = await requireUser(locale);
+  const commentId = String(formData.get("commentId") ?? "");
+  const taskId = String(formData.get("taskId") ?? "");
+
+  if (!commentId || !taskId) return;
+
+  const supabase = await createClient();
+  
+  // 1. Fetch comment to verify authorization and check for attachments
+  const { data: comment } = await supabase
+    .from("task_comments")
+    .select("author_id, body, workspace_id")
+    .eq("id", commentId)
+    .maybeSingle();
+
+  if (!comment) return;
+
+  // Fetch user role in the workspace to verify if they are leader
+  const { data: member } = await supabase
+    .from("workspace_members")
+    .select("role")
+    .eq("workspace_id", comment.workspace_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const isLeader = member && ["owner", "admin", "manager"].includes(member.role);
+  const isAuthor = comment.author_id === user.id;
+
+  if (!isAuthor && !isLeader) {
+    redirect(`/${locale}/tasks/${taskId}?error=unauthorized`);
+  }
+
+  // 2. Parse attachment from body
+  const attachmentRegex = /\[attachment:([0-9a-fA-F-]{36})\]/;
+  const match = comment.body.match(attachmentRegex);
+  const attachmentId = match ? match[1] : null;
+
+  if (attachmentId) {
+    const { data: attachment } = await supabase
+      .from("task_attachments")
+      .select("object_path")
+      .eq("id", attachmentId)
+      .maybeSingle();
+
+    if (attachment) {
+      await supabase.storage
+        .from("task-attachments")
+        .remove([attachment.object_path]);
+
+      const adminClient = createAdminClient();
+      await adminClient
+        .from("task_attachments")
+        .delete()
+        .eq("id", attachmentId);
+    }
+  }
+
+  // 3. Delete comment
+  await supabase
+    .from("task_comments")
+    .delete()
+    .eq("id", commentId);
+
+  revalidatePath(`/${locale}/tasks/${taskId}`);
+  redirect(`/${locale}/tasks/${taskId}?comment-deleted=1`);
+}
+
 export async function addChecklistItemAction(formData: FormData) {
   const locale = getLocale(formData);
   const user = await requireUser(locale);
